@@ -1,0 +1,23 @@
+# Security
+.env
+.env.example
+
+# Environments
+trading_bot_env/
+venv/
+env/
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Local Data and Logs
+data/*.csv
+data/*.sqlite
+logs/*.log
+
+# IDE settings
+.vscode/
+.idea/
