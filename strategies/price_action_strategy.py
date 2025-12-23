@@ -12,6 +12,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 
+# This function is used to identify the current state of a stock
+# and save its results in a database to be compared to future 
+# states
 def engineer_features(csv_path):
     # 1. Load the data
     df = pd.read_csv(csv_path)
@@ -54,8 +57,46 @@ def engineer_features(csv_path):
     
     return df
 
+def visualize_signals(df):
+    # Ensure timestamp is in datetime format for proper plotting
+    df['timestamp'] = pd.to_datetime(df['timestamp'])
+    
+	# Setting up the plot for a better visualization
+    plt.figure(figsize=(14, 8))
+    plt.plot(df['timestamp'], df['close'], label='SPY Price', color='black', alpha=0.3)
+
+    # 1. Identify where signals occur
+    buys = df[df['signal_weight'] > 0]
+    sells = df[df['signal_weight'] < 0]
+
+    # 2. Plot "Buy" markers (LH and LL)
+    plt.scatter(buys['timestamp'], buys['close'], 
+                color='green', marker='^', s=100, label='Buy Signals (LL/LH)')
+
+    # 3. Plot "Sell" markers (HH and HL)
+    plt.scatter(sells['timestamp'], sells['close'], 
+                color='red', marker='v', s=100, label='Sell Signals (HH/HL)')
+
+    # 4. Annotate specific states (HH, LL, etc.)
+    # Note: For future visualization of the script. "_" as a 	
+	# 		placeholder for the index number. We just need the 
+	# 		column value at "row", but we still need to eterate 
+	# 		trough the index, but intentionally ignoring it.
+    for _, row in df[df['state']!= "WAIT"].iterrows():
+        plt.annotate(row['state'], (row['timestamp'], row['close']), 
+                     textcoords="offset points", xytext=(0,10), ha='center', fontsize=9, fontweight='bold')
+
+    plt.title('SPY Price Action Signals Audit')
+    plt.xlabel('Date')
+    plt.ylabel('Price ($)')
+    plt.legend()
+    plt.grid(True, alpha=0.2)
+    
+    # Save the chart to your /logs folder for the RPi record
+    plt.savefig('logs/strategy_audit.png')
+    print("SUCCESS: Chart saved to logs/strategy_audit.png")
+    plt.show()
+
 if __name__ == "__main__":
     processed_df = engineer_features("data/SPY_historical.csv")
-    
-    # Print the last few confirmed signals
-    print(processed_df[processed_df['state']!= "WAIT"][['timestamp', 'state', 'signal_weight']].tail(10))
+    visualize_signals(processed_df)
