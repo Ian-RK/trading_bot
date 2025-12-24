@@ -16,11 +16,13 @@ from strategies.price_action_strategy import engineer_features
 INITIAL_CAPITAL = 10000.0
 COMMISSION_PER_SHARE = 0.01  # Typical broker fee
 SLIPPAGE_PCT = 0.001         # 0.1% market impact cost
+DAILY_LOSS_LIMIT = -0.03 	 # 3% Daily Stop [1]
 
 def run_backtest(df):
     cash = INITIAL_CAPITAL
     shares = 0
     equity_curve = []
+    bot_active = True  # Tracking circuit breaker status
 
     print(f"--- Starting Backtest with ${INITIAL_CAPITAL} ---")
 
@@ -28,6 +30,11 @@ def run_backtest(df):
         current_price = row['close']
         weight = row['signal_weight']
         
+        if not bot_active:
+            # If the bot was killed, equity remains flat
+            equity_curve.append(equity_curve[-1])
+            continue
+            
         # 2. TRADE EXECUTION LOGIC
         # if is not  in a WAIT state do something
         if weight!= 0:
@@ -54,22 +61,37 @@ def run_backtest(df):
                 cash -= (cost + commissions)
                 shares += shares_to_trade
                 
-                # FIXED: trade_type is now used in the debug log
+				# FIXED: trade_type is now used in the debug log
                 trade_type = "BUY" if shares_to_trade > 0 else "SELL"
                 print(f"Day {i}: {trade_type} {abs(shares_to_trade)} shares @ ${execution_price:.2f}")
-
-        # 3. END OF DAY VALUATIONS
+                
+		# Daily Valuation
         daily_equity = cash + (shares * current_price)
+        
+		# --- CIRCUIT BREAKER LOGIC ---
+        if len(equity_curve) > 0:
+            prev_day_equity = equity_curve[-1]
+            daily_return = (daily_equity / prev_day_equity) - 1
+            
+            if daily_return < DAILY_LOSS_LIMIT:
+                print(f"CRITICAL: Day {i} hit Daily Loss Limit ({daily_return:.2%}). KILLING BOT.")
+                # Force liquidation at current price
+                cash += (shares * current_price * (1 - SLIPPAGE_PCT))
+                shares = 0
+                daily_equity = cash
+                bot_active = False  # Stops all future trading
+
         equity_curve.append(daily_equity)
 
     df['total_equity'] = equity_curve
     return df
 
-# --- 4. PERFORMANCE METRICS --- 
+# --- PERFORMANCE METRICS --- 
 def print_metrics(df):
     # iloc[-1]: Finds the final value of your total_equity column
 	# 			on the very last day of the year.
-    total_return = (df['total_equity'].iloc[-1] / 
+    final_equity = df['total_equity'].iloc[-1]
+    total_return = (final_equity / 
                     INITIAL_CAPITAL - 1) * 100
     
     # Calculate Drawdown
@@ -86,8 +108,8 @@ def print_metrics(df):
     daily_returns = df['total_equity'].pct_change().dropna()
     sharpe = np.sqrt(252) * daily_returns.mean() / daily_returns.std() if daily_returns.std()!= 0 else 0
 
-    print(f"\nBACKTEST RESULTS:")
-    print(f"Final Equity: ${df['total_equity'].iloc[-1]:.2f}")
+    print(f"\nREFINED BACKTEST RESULTS:")
+    print(f"Final Equity: ${final_equity:.2f}")
     print(f"Total Return: {total_return:.2f}%")
     print(f"Max Drawdown: {max_drawdown:.2f}%")
     print(f"Sharpe Ratio: {sharpe:.2f}")
@@ -98,6 +120,6 @@ if __name__ == "__main__":
     print_metrics(results)
     
     results.plot(x='timestamp', y='total_equity', 
-                 title='Account Balance Over Time')
-    plt.savefig('logs/backtest_equity_curve.png')
+                 title='Refined Account Balance')
+    plt.savefig('logs/refined_backtest_equity_curve.png')
     plt.show()

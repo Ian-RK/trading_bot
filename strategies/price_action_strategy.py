@@ -11,6 +11,7 @@ Description: This script uses a "rolling window" approach.
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
+import pandas_ta as ta
 
 # This function is used to identify the current state of a stock
 # and save its results in a database to be compared to future 
@@ -18,6 +19,24 @@ import matplotlib.pyplot as plt
 def engineer_features(csv_path):
     # 1. Load the data
     df = pd.read_csv(csv_path)
+    
+	# --- INDICATOR CALCULATION ---
+    
+    # SMA 200: The "Trend Veto" - Long-term trend filter
+	# (If price is below this, we don't buy)
+    df['sma_200'] = ta.sma(df['close'], length=200)
+    
+    # Bollinger Bands: Defines "Oversold"
+	# (Identifies statistically cheap prices)
+    bbands = ta.bbands(df['close'], length=20, std=2)
+    # pandas_ta returns columns like BBL_20_2.0 (Lower), 
+	# BBM_20_2.0 (Mid), BBU_20_2.0 (Upper)
+    df['bb_lower'] = bbands.iloc[:, 0] 
+    
+    # ATR: Used for dynamic risk management later. 
+    df['atr'] = ta.atr(df['high'], df['low'], df['close'], length=14)
+
+	# --- SWING DETECTION ---
     
     # 2. Identify Local Peaks (Highs) and Valleys (Lows)
     # We use a window of 5 days to define a 'swing'
@@ -47,13 +66,22 @@ def engineer_features(csv_path):
     df.loc[df['is_low'] & (df['low'] > df['last_low']), 'state'] = "HL"
     df.loc[df['is_low'] & (df['low'] < df['last_low']), 'state'] = "LL"
     
-    # 5. Mapping your custom Scaling Logic
-    # Mapping: HH -> Sell Lot (-1.0), HL -> Sell Little (-0.5), 
-    #          LL -> Buy Little (0.5), LH -> Buy Lot (1.0)
-    #          WAIT -> (0.0)
-    weights = {"HH": -1.0, "HL": -0.5, 
-               "LL": 0.5, "LH": 1.0, "WAIT": 0.0}
-    df['signal_weight'] = df['state'].map(weights)
+    # --- REFINED: SIGNAL LOGIC WITH VETO ---
+    df['signal_weight'] = 0.0
+    
+    # Filter 1: Price > SMA 200 
+	# (Ensures we are in a long-term bull market) 
+    # Filter 2: Price <= BB_Lower 
+	# (Ensures we are buying a deep "value" dip) 
+    buy_condition = (df['close'] > df['sma_200']) & (df['close'] <= df['bb_lower'])
+    
+    # Apply Veto: Only buy LH/LL if filters are met
+    df.loc[buy_condition & (df['state'] == "LH"), 'signal_weight'] = 1.0
+    df.loc[buy_condition & (df['state'] == "LL"), 'signal_weight'] = 0.5
+    
+    # Sell Logic: Remains same (lock in gains at any peak)
+    df.loc[df['state'] == "HH", 'signal_weight'] = -1.0
+    df.loc[df['state'] == "HL", 'signal_weight'] = -0.5
     
     return df
 
@@ -98,5 +126,7 @@ def visualize_signals(df):
     plt.show()
 
 if __name__ == "__main__":
-    processed_df = engineer_features("data/SPY_historical.csv")
-    visualize_signals(processed_df)
+	processed_df = engineer_features("data/SPY_historical.csv")
+#    visualize_signals(processed_df)
+	print(processed_df[processed_df['signal_weight']!= 0][['timestamp', 'state', 'signal_weight']].tail(10))
+    
