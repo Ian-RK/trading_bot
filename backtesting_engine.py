@@ -23,16 +23,25 @@ def run_backtest(df):
     shares = 0
     equity_curve = []
     bot_active = True  # Tracking circuit breaker status
+    
+	# We shift the signals by 1 day. 
+	# A signal generated at the Close of Tuesday
+    # will now be processed at the Open of Wednesday.
+    df['execute_signal'] = df['signal_weight'].shift(1).fillna(0)
 
-    print(f"--- Starting Backtest with ${INITIAL_CAPITAL} ---")
+    print(f"--- Starting REALISTIC Backtest with ${INITIAL_CAPITAL} ---")
 
     for i, row in df.iterrows():
-        current_price = row['close']
-        weight = row['signal_weight']
+        # Prices for this specific day
+        open_price = row['open']
+        close_price = row['close']
+        
+        # The signal decided 'yesterday'
+        weight = row['execute_signal']
         
         if not bot_active:
             # If the bot was killed, equity remains flat
-            equity_curve.append(equity_curve[-1])
+            equity_curve.append(equity_curve[-1] if equity_curve else INITIAL_CAPITAL)
             continue
             
         # 2. TRADE EXECUTION LOGIC
@@ -43,13 +52,12 @@ def run_backtest(df):
             # 0.5 (Buy Little) -> 50% of Total Equity
             # -1.0 (Sell Lot) -> 0% (Liquidate)
             # -0.5 (Sell Little) -> 50% (Reduce)
-            
-            current_total_value = cash + (shares * current_price)
+            current_total_value = cash + (shares * open_price)
             target_pct = weight if weight > 0 else (1.0 + weight)
             target_value = current_total_value * target_pct
             
             # Apply Slippage: Buy slightly higher, Sell slightly lower [3]
-            execution_price = current_price * (1 + SLIPPAGE_PCT) if weight > 0 else current_price * (1 - SLIPPAGE_PCT)
+            execution_price = open_price * (1 + SLIPPAGE_PCT) if weight > 0 else open_price * (1 - SLIPPAGE_PCT)
             
             # Calculate difference between current holdings and target
             diff_dollars = target_value - (shares * execution_price)
@@ -66,7 +74,7 @@ def run_backtest(df):
                 print(f"Day {i}: {trade_type} {abs(shares_to_trade)} shares @ ${execution_price:.2f}")
                 
 		# Daily Valuation
-        daily_equity = cash + (shares * current_price)
+        daily_equity = cash + (shares * close_price)
         
 		# --- CIRCUIT BREAKER LOGIC ---
         if len(equity_curve) > 0:
@@ -76,7 +84,7 @@ def run_backtest(df):
             if daily_return < DAILY_LOSS_LIMIT:
                 print(f"CRITICAL: Day {i} hit Daily Loss Limit ({daily_return:.2%}). KILLING BOT.")
                 # Force liquidation at current price
-                cash += (shares * current_price * (1 - SLIPPAGE_PCT))
+                cash += (shares * close_price * (1 - SLIPPAGE_PCT))
                 shares = 0
                 daily_equity = cash
                 bot_active = False  # Stops all future trading
@@ -108,7 +116,7 @@ def print_metrics(df):
     daily_returns = df['total_equity'].pct_change().dropna()
     sharpe = np.sqrt(252) * daily_returns.mean() / daily_returns.std() if daily_returns.std()!= 0 else 0
 
-    print(f"\nREFINED BACKTEST RESULTS:")
+    print(f"\nREAL-WORLD BACKTEST RESULTS:")
     print(f"Final Equity: ${final_equity:.2f}")
     print(f"Total Return: {total_return:.2f}%")
     print(f"Max Drawdown: {max_drawdown:.2f}%")
@@ -120,6 +128,6 @@ if __name__ == "__main__":
     print_metrics(results)
     
     results.plot(x='timestamp', y='total_equity', 
-                 title='Refined Account Balance')
+                 title='Refined Account Balance (Next-Day Open)')
     plt.savefig('logs/refined_backtest_equity_curve.png')
     plt.show()
