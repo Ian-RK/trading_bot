@@ -22,15 +22,14 @@ SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
 # 2. Initialize the Client
 client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
 
-# This function downloads the data from the Stock history
-# and store the data in a local database so we can do our
-# research in real data without working with live time
-def download_data(symbol, days=365):
-    print(f"--- Fetching data for {symbol} ---")
-    
-    # Define time range
-    end_date = datetime.now()
-    start_date = end_date - timedelta(days=days)
+"""
+This function downloads the data for a specific data range and 
+saves it with a lable in a local database so we can do our
+research in real data without working with live time
+"""
+def download_custom_data(symbol, start_date, end_date, label):
+    # Example: start_date = datetime(2022, 1, 1)
+    print(f"--- Downloading {symbol} for {label} regime ---") 
     
     # 3. Create the Request
     request_params = StockBarsRequest(
@@ -49,11 +48,17 @@ def download_data(symbol, days=365):
     # 6. Save to /data folder
     # Note: df index is a multi-index (symbol, timestamp). We'll reset it.
     df = df.reset_index()
-    output_path = f"data/{symbol}_historical.csv"
+    output_path = f"data/{symbol}_{label}.csv"
     df.to_csv(output_path, index=False)
     
     print(f"SUCCESS: {len(df)} days of data saved to {output_path}")
-    return df
 
 if __name__ == "__main__":
-    download_data("SPY")
+    # SCENARIO 1: Bear Market (SPY 2022) - S&P 500 fell ~18% this year
+#    download_custom_data("SPY", datetime(2022, 1, 1), datetime(2022, 12, 31), "BEAR_2022")
+
+    # SCENARIO 2: Different Asset (QQQ 2025) - Tech stocks often move more violently
+#    download_custom_data("QQQ", datetime(2025, 1, 1), datetime(2025, 12, 20), "TECH_2025")
+
+    # SCENARIO 3: Neutral Market (SPY 2018) - A very flat, choppy year
+    download_custom_data("SPY", datetime(2018, 1, 1), datetime(2018, 12, 31), "NEUTRAL_2018")

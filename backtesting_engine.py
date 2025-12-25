@@ -123,11 +123,11 @@ def print_metrics(df):
     print(f"Sharpe Ratio: {sharpe:.2f}")
 
 if __name__ == "__main__":
-    data = engineer_features("data/SPY_historical.csv")
+    data = engineer_features("data/SPY_NEUTRAL_2018.csv")
     results = run_backtest(data)
     print_metrics(results)
     
     results.plot(x='timestamp', y='total_equity', 
-                 title='Refined Account Balance (Next-Day Open)')
-    plt.savefig('logs/refined_backtest_equity_curve.png')
+                 title='NEUTRAL Account Balance (Next-Day Open)')
+    plt.savefig('logs/NEUTRAL_backtest_equity_curve.png')
     plt.show()
