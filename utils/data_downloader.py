@@ -23,9 +23,13 @@ SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
 client = StockHistoricalDataClient(API_KEY, SECRET_KEY)
 
 """
-This function downloads the data for a specific data range and 
-saves it with a lable in a local database so we can do our
+@brief This function downloads the data for a specific data range 
+and saves it with a lable in a local database so we can do our
 research in real data without working with live time
+@param symbol: Tells the function which stock to get the data
+@param start_date: Date in which the data will start download
+@param end_date: Date in which the data will end download
+@param label: Name that will be used to save the data
 """
 def download_custom_data(symbol, start_date, end_date, label):
     # Example: start_date = datetime(2022, 1, 1)

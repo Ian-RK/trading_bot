@@ -13,9 +13,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pandas_ta as ta
 
-# This function is used to identify the current state of a stock
-# and save its results in a database to be compared to future 
-# states
+"""
+@brief This function is used to identify the current state of a stock
+and save its results in a database to be compared to future states
+@param csv_path path to the data downloaded by data_download.py
+@return df the loaded data saved in pandas format
+"""
 def engineer_features(csv_path):
     # 1. Load the data
     df = pd.read_csv(csv_path)
@@ -66,7 +69,7 @@ def engineer_features(csv_path):
     df.loc[df['is_low'] & (df['low'] > df['last_low']), 'state'] = "HL"
     df.loc[df['is_low'] & (df['low'] < df['last_low']), 'state'] = "LL"
     
-    # --- REFINED: SIGNAL LOGIC WITH VETO ---
+    # --- SIGNAL LOGIC WITH VETO ---
     df['signal_weight'] = 0.0
     
     # Filter 1: Price > SMA 200 
@@ -85,6 +88,11 @@ def engineer_features(csv_path):
     
     return df
 
+"""
+@brief Method created to vizualize the signals in a graphing format
+	   Buy singnals are in green and Sell signals are in red
+@param df the updated data saved in pandas format
+"""
 def visualize_signals(df):
     # Ensure timestamp is in datetime format for proper plotting
     df['timestamp'] = pd.to_datetime(df['timestamp'])
