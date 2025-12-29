@@ -1,3 +1,11 @@
+"""
+Filename: data_downloader.py
+Author: Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
+Created: 12-26-2025
+Description: This script provides a simple interface for the bot
+to "talk" to me via a telegram chat. So I know what is going on 
+with the bot without looking at my computer dirrectly
+"""
 import os
 import requests
 from dotenv import load_dotenv

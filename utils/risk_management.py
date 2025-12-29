@@ -1,3 +1,14 @@
+"""
+Filename: risk_manegement.py
+Author: Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
+Created: 12-26-2025
+Description: This script prevents the bot to make more then 3 
+trades on the same stock a day
+Note: Under FINRA rules, if your account equity is below
+$25,000, you are restricted to three day trades (buying and 
+selling the same stock on the same calendar day).T 
+"""
+
 import os
 from dotenv import load_dotenv
 from alpaca.trading.client import TradingClient
