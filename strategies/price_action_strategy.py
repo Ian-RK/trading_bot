@@ -19,9 +19,9 @@ and save its results in a database to be compared to future states
 @param csv_path path to the data downloaded by data_download.py
 @return df the loaded data saved in pandas format
 """
-def engineer_features(csv_path):
-    # 1. Load the data
-    df = pd.read_csv(csv_path)
+def calculate_signals(df):
+    # 1. Ensure data is clean
+    df = df.copy()
     
 	# --- INDICATOR CALCULATION ---
     
@@ -32,6 +32,7 @@ def engineer_features(csv_path):
     # Bollinger Bands: Defines "Oversold"
 	# (Identifies statistically cheap prices)
     bbands = ta.bbands(df['close'], length=20, std=2)
+
     # pandas_ta returns columns like BBL_20_2.0 (Lower), 
 	# BBM_20_2.0 (Mid), BBU_20_2.0 (Upper)
     df['bb_lower'] = bbands.iloc[:, 0] 
@@ -88,9 +89,21 @@ def engineer_features(csv_path):
     
     return df
 
+def engineer_features(df_or_path):
+    """
+    Unified entry point. 
+    Accepts a string (file path) or a pandas DataFrame.
+    """
+    if isinstance(df_or_path, str):
+        df = pd.read_csv(df_or_path)
+    else:
+        df = df_or_path
+        
+    return calculate_signals(df)
+
 """
-@brief Method created to vizualize the signals in a graphing format
-	   Buy singnals are in green and Sell signals are in red
+@brief Method created to vizualize the signals in a graphing 
+format Buy singnals are in green and Sell signals are in red
 @param df the updated data saved in pandas format
 """
 def visualize_signals(df):
@@ -132,9 +145,4 @@ def visualize_signals(df):
     plt.savefig('logs/strategy_audit.png')
     print("SUCCESS: Chart saved to logs/strategy_audit.png")
     plt.show()
-
-if __name__ == "__main__":
-	processed_df = engineer_features("data/SPY_historical.csv")
-#    visualize_signals(processed_df)
-	print(processed_df[processed_df['signal_weight']!= 0][['timestamp', 'state', 'signal_weight']].tail(10))
     

@@ -1,5 +1,5 @@
 """
-Filename: data_downloader.py
+Filename: tele_monitor.py
 Author: Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
 Created: 12-26-2025
 Description: This script provides a simple interface for the bot
@@ -14,14 +14,22 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
+"""
+Sends a notification to your phone via Telegram.
+using HTML mode for better reliability with price data
+"""
 def send_telegram_message(message):
-    """Sends a notification to your phone via Telegram."""
     if not TOKEN or not CHAT_ID:
         print("Telegram credentials missing. Skipping alert.")
         return
         
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    
+    payload = {
+        "chat_id": CHAT_ID, 
+        "text": message, 
+        "parse_mode": "HTML"
+    }
     
     try:
         response = requests.post(url, json=payload, timeout=10)
@@ -31,4 +39,4 @@ def send_telegram_message(message):
 
 if __name__ == "__main__":
     # Test alert
-    send_telegram_message("*Trading Bot Online* \nStatus: Monitoring SPY")
+    send_telegram_message("<b>Trading Bot Online</b> \nStatus: Monitoring SPY")

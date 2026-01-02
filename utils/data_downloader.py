@@ -65,4 +65,4 @@ if __name__ == "__main__":
 #    download_custom_data("QQQ", datetime(2025, 1, 1), datetime(2025, 12, 20), "TECH_2025")
 
     # SCENARIO 3: Neutral Market (SPY 2018) - A very flat, choppy year
-    download_custom_data("SPY", datetime(2018, 1, 1), datetime(2018, 12, 31), "NEUTRAL_2018")
+    download_custom_data("SPY", datetime(2024, 1, 1), datetime.now(), "historical")
