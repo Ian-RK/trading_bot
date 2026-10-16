@@ -1,6 +1,5 @@
 # Security
 .env
-.env.example
 
 # Environments
 trading_bot_env/
