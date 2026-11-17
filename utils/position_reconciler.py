@@ -3,55 +3,67 @@ Filename: position_reconciler.py
 Author: Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
 Created: 01-02-2026
 Description: Read-only reconciliation with Alpaca.
-    		 The exchange is the single source of truth.
+    The exchange is the single source of truth.
+    On ANY error, qty / market_value / exists are None (never 0.0),
+    so a failed query can never be mistaken for a flat position.
 """
 
-from alpaca.trading.client import TradingClient
-from dotenv import load_dotenv
-import os
+import math
 
-load_dotenv()
+from utils.broker import trading_client
 
-trading_client = TradingClient(
-    os.getenv("ALPACA_API_KEY"),
-    os.getenv("ALPACA_SECRET_KEY"),
-    paper=True
-)
+
+def _error(reason):
+    print(f"[RECONCILE ERROR] {reason}")
+    return {
+        "exists": None,
+        "qty": None,
+        "market_value": None,
+        "side": None,
+        "status": "ERROR",
+    }
+
 
 def get_current_position(symbol: str):
     """
-    Queries Alpaca for the current position in `symbol`.
-
-    Returns a dict with explicit, defensive fields.
+    Returns a dict with keys: exists, qty, market_value, side, status.
+    status == "OK"    -> qty/market_value are real numbers (0.0 means confirmed flat).
+    status == "ERROR" -> qty/market_value/exists are None. Never treat as flat.
     """
     try:
         positions = trading_client.get_all_positions()
+
+        for p in positions:
+            if p.symbol == symbol:
+                qty = float(p.qty)
+                market_value = float(p.market_value)
+
+                if not (math.isfinite(qty) and math.isfinite(market_value)):
+                    return _error("Position has a non-finite qty or market value")
+
+                if qty > 0:
+                    side = "LONG"
+                elif qty < 0:
+                    side = "SHORT"
+                else:
+                    side = None
+
+                return {
+                    "exists": qty != 0,
+                    "qty": qty,
+                    "market_value": market_value,
+                    "side": side,
+                    "status": "OK",
+                }
     except Exception as e:
-        print(f"[RECONCILE ERROR] Failed to fetch positions: {e}")
-        return {
-            "exists": False,
-            "qty": 0.0,
-            "market_value": 0.0,
-            "side": None,
-            "status": "ERROR"
-        }
+        detail = " ".join(str(e).split())[:200]
+        return _error(f"Failed to fetch/parse positions: {detail}")
 
-    for p in positions:
-        if p.symbol == symbol:
-            qty = float(p.qty)
-            return {
-                "exists": qty != 0,
-                "qty": qty,
-                "market_value": float(p.market_value),
-                "side": "LONG" if qty > 0 else None,
-                "status": "OK"
-            }
-
-    # No position found
+    # Query succeeded and no position exists for this symbol
     return {
         "exists": False,
         "qty": 0.0,
         "market_value": 0.0,
         "side": None,
-        "status": "OK"
+        "status": "OK",
     }

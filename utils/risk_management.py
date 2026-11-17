@@ -1,51 +1,45 @@
 """
-Filename: risk_manegement.py
+Filename: risk_management.py
 Author: Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
 Created: 12-26-2025
-Description: This script prevents the bot to make more then 3 
-trades on the same stock a day
-Note: Under FINRA rules, if your account equity is below
-$25,000, you are restricted to three day trades (buying and 
-selling the same stock on the same calendar day).T 
+Description: Account-level risk checks (fail-closed).
+    The old Pattern Day Trader check was removed: Alpaca retired the PDT
+    fields after FINRA's intraday-margin change (June 2026).
 """
 
-import os
-from dotenv import load_dotenv
-from alpaca.trading.client import TradingClient
-
-load_dotenv()
-API_KEY = os.getenv("ALPACA_API_KEY")
-SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
-
-# Initialize client in Paper mode for testing
-trading_client = TradingClient(API_KEY, SECRET_KEY, paper=True)
+from utils.broker import trading_client
 
 """
-@brief: Checks if the account is at risk of being flagged as a Pattern Day Trader.
-@return: True if it is safe to trade, False otherwise.
+@brief: Fail-closed account health check.
+@return: (ok: bool, reason: str). Any missing/odd data means NOT tradable.
 """
-def is_pdt_safe():
-    account = trading_client.get_account()
-    
-    # 1. Check if already flagged
-    if account.pattern_day_trader:
-        print("WARNING: Account already flagged as PDT. Check equity vs $25k limit.")
-        return float(account.equity) >= 25000.0
+def is_account_tradable():
+    try:
+        account = trading_client.get_account()
+    except Exception as e:
+        return False, f"account query failed: {e}"
 
-    # 2. Check rolling 5-day trade count
-    # daytrade_count is an integer provided by Alpaca API
-    current_count = account.daytrade_count
-    
-    print(f"Current 5-Day Trade Count: {current_count}")
+    status = getattr(account.status, "value", str(account.status))
+    if status != "ACTIVE":
+        return False, f"account status is {status}, not ACTIVE"
 
-    # We use '2' as the safety threshold to leave room for emergency exits
-    if current_count >= 3:
-        print("VETO: PDT Limit reached (3/3). No new entries allowed today.")
-        return False
-        
-    return True
+    # 'is not False' also blocks on None/missing values
+    if account.trading_blocked is not False:
+        return False, f"trading_blocked is {account.trading_blocked!r}"
+    if account.account_blocked is not False:
+        return False, f"account_blocked is {account.account_blocked!r}"
+
+    try:
+        equity = float(account.equity)
+        buying_power = float(account.buying_power)
+    except (TypeError, ValueError):
+        return False, "equity/buying_power missing or not numeric"
+
+    if equity <= 0 or buying_power <= 0:
+        return False, f"equity={equity}, buying_power={buying_power}"
+
+    return True, "OK"
+
 
 if __name__ == "__main__":
-    # Sanity check for your account status
-    safe = is_pdt_safe()
-    print(f"Is account safe for new entries? {safe}")
+    print(is_account_tradable())
