@@ -1,0 +1,13 @@
+# Direct dependencies, pinned to the versions that ran on 2026-11-12 (Python 3.13.1).
+# Transitive dependencies (numba, pydantic, urllib3, ...) are resolved by pip.
+alpaca-py==0.43.2
+python-dotenv==1.2.1
+requests==2.32.5
+pandas==2.3.3
+numpy==2.2.6
+tzdata==2025.3
+matplotlib==3.10.8
+pandas-ta==0.4.71b0
+
+# Development / tests
+pytest>=8

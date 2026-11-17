@@ -1,5 +1,6 @@
 # Security
 .env
+KILL_SWITCH
 
 # Environments
 trading_bot_env/
@@ -16,6 +17,7 @@ __pycache__/
 data/*.csv
 data/*.sqlite
 logs/*.log
+logs/audit.jsonl*
 
 # IDE settings
 .vscode/
