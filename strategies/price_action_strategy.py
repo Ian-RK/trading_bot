@@ -42,33 +42,31 @@ def calculate_signals(df):
 
 	# --- SWING DETECTION ---
     
-    # 2. Identify Local Peaks (Highs) and Valleys (Lows)
-    # We use a window of 5 days to define a 'swing'
+        # 2. Identify swing highs/lows CAUSALLY.
+    # A swing at row t needs rows t-5..t+5 (centered 11-row window), so it is
+    # only KNOWN at row t+5. Detect it on the centered window, then shift the
+    # flag and the pivot price forward by `window` rows: row i uses rows 0..i only.
     window = 5
-    df['is_high'] = df['high'] == df['high'].rolling(window=window*2+1, center=True).max()
-    df['is_low'] = df['low'] == df['low'].rolling(window=window*2+1, center=True).min()
-    
-    # 3. Store the values of the LAST high and LAST low to compare
-    df['last_high'] = df[df['is_high']]['high'].shift(1)
-    df['last_low'] = df[df['is_low']]['low'].shift(1)
-    
-    # Forward fill so every row knows what the 'previous' peak/valley was
+    window_size = window * 2 + 1
+    raw_high = df['high'] == df['high'].rolling(window=window_size, center=True).max()
+    raw_low = df['low'] == df['low'].rolling(window=window_size, center=True).min()
+    df['is_high'] = raw_high.shift(window, fill_value=False)
+    df['is_low'] = raw_low.shift(window, fill_value=False)
+    pivot_high = df['high'].shift(window)    # the pivot's own high, known at confirm row
+    pivot_low = df['low'].shift(window)
+
+    # 3. Previous confirmed pivot values, forward-filled
+    df['last_high'] = pivot_high[df['is_high']].shift(1)
+    df['last_low'] = pivot_low[df['is_low']].shift(1)
     df['last_high'] = df['last_high'].ffill()
     df['last_low'] = df['last_low'].ffill()
-    
-    # 4. Logic for your 4 States (HH, HL, LH, LL)
-    # HH: Current high > Previous high
-    # HL: Current low > Previous low
-    # LH: Current high < Previous high
-    # LL: Current low < Previous low
-    
+
+    # 4. States (HH, HL, LH, LL), set only when a pivot is confirmed
     df['state'] = "WAIT"
-    
-    # We only update state when a new high or low is confirmed
-    df.loc[df['is_high'] & (df['high'] > df['last_high']), 'state'] = "HH"
-    df.loc[df['is_high'] & (df['high'] < df['last_high']), 'state'] = "LH"
-    df.loc[df['is_low'] & (df['low'] > df['last_low']), 'state'] = "HL"
-    df.loc[df['is_low'] & (df['low'] < df['last_low']), 'state'] = "LL"
+    df.loc[df['is_high'] & (pivot_high > df['last_high']), 'state'] = "HH"
+    df.loc[df['is_high'] & (pivot_high < df['last_high']), 'state'] = "LH"
+    df.loc[df['is_low'] & (pivot_low > df['last_low']), 'state'] = "HL"
+    df.loc[df['is_low'] & (pivot_low < df['last_low']), 'state'] = "LL"
     
     # --- SIGNAL LOGIC WITH VETO ---
     df['signal_weight'] = 0.0
