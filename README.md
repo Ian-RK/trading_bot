@@ -1,129 +1,99 @@
-# 🤖 Trading Bot: Systematic Price Action Engine
+# Trading Bot: Price-Action Engine on Alpaca (paper trading)
 
-[](https://www.python.org/downloads/)
-([https://img.shields.io/badge/License-MIT-yellow.svg](https://www.google.com/search?q=https://img.shields.io/badge/License-MIT-yellow.svg))]([https://opensource.org/licenses/MIT](https://opensource.org/licenses/MIT))
-[](https://www.google.com/search?q=%5Bhttps://alpaca.markets/%5D(https://alpaca.markets/))
+An experimental Python trading bot built around a price-action strategy and a safety layer designed to fail closed. It is **under development, runs against an Alpaca paper account only, and cannot currently place orders on its own.**
 
-A robust, regime-specific automated trading system built in Python. This bot utilizes a **4-State Trend Reversal Model** combined with institutional-grade risk filters to identify high-probability entry points while strictly preserving capital during market crashes.
+> **Not ready for live trading.** Paper results do not predict real-money results. This is educational software, not financial advice.
 
-## 📈 Performance Summary (Backtested)
+## Status
 
-The strategy was rigorously validated across multiple market regimes to ensure it is not "curve-fitted" to a single year.
+- The safety and execution plumbing is implemented and unit-tested (see below).
+- The bot loop runs in paper mode during market hours, evaluates the strategy and logs what it *would* do. It submits nothing.
+- A guarded order-submission function exists but is not connected to the bot. It has been tested only with a fake broker and in dry runs, and one forced 1-share paper round trip (buy, duplicate-ID rejection, sell) has been run successfully.
+- **The strategy is not validated.** The swing-detection step uses future bars, so earlier backtest figures were contaminated by look-ahead bias and have been **withdrawn**. The live path also cannot produce a signal on the newest bar until this is fixed. No performance claim is made.
 
-| Regime | Asset | Total Return | Max Drawdown | Sharpe Ratio |
-| --- | --- | --- | --- | --- |
-| **Bear Market (2022)** | SPY | +17.32% | -2.11% | 3.92 |
-| **High Volatility (2025)** | QQQ | +23.93% | -1.80% | 4.22 |
-| **Neutral/Choppy (2018)** | SPY | +1.65% | -9.70% | 0.30 |
+## What is implemented
 
----
+**Safety layers**
+- **Paper-only guard:** the client is hard-coded to paper; startup refuses unless the account looks like a paper account and any configured base URL is the paper host.
+- **Fail-closed checks:** position, open-order and account-health queries return explicit error states, and an error is never treated as "flat".
+- **Market-hours logic:** trades only when the market is open, using Eastern-time calendar handling.
+- **Stale-data veto:** bars older than 180 seconds (or timestamped in the future) block the cycle; each bar is processed once.
+- **Kill switch:** create a file named `KILL_SWITCH` in the repo root to suppress all trading without stopping the bot.
+- **Audit log:** every cycle decision is appended to `logs/audit.jsonl` (local, git-ignored).
+- **Alerts:** Telegram messages for state changes, errors, blocks and halts, with token redaction.
+- **Failure handling:** a failed cycle is retried with backoff; five consecutive failures stop the bot.
 
-## ✨ Key Features
+**Order logic (not yet wired to the bot)**
+- Long-only intent from the strategy weight: positive weights add exposure, negative weights reduce it, `0` means hold; no shorting, whole shares only.
+- Hard size caps (paper phase: $1,000 or 1% of equity per order; $5,000 or 5% total position).
+- Marketable limit orders, a unique client order ID per bar, order-status classification that accounts for partial fills, and a guarded submit function requiring two independent switches.
 
-* **Regime-Specific Defensive Logic:** Uses an **SMA 200 "Trend Veto"** to automatically sit in cash during structural market crashes, as validated in the 2022 stress test.
-* **Realistic Backtesting Engine:** Implements "Next-Day Open" execution to eliminate look-ahead bias and accounts for 0.1% slippage and broker commissions.
-* **Regulatory PDT Guard:** Built-in Pattern Day Trader (PDT) protection that monitors the rolling 5-day trade count to prevent account freezing.
-* **Reliability Engineering:** Features a 60-second **Stale Data Veto** and an automated **Daily Loss Kill Switch** (-3%) to handle connectivity drops or flash crashes.
-* **Headless Observability:** Integrated **Telegram Heartbeat** system for 24/7 monitoring on remote devices like a Raspberry Pi.
+## Architecture
 
----
+```
+main.py                     loop: schedule -> bar -> guards -> signal -> dry-run execution -> audit
+strategies/                 price_action_strategy.py (features and signal weight)
+utils/                      broker, reconcilers, intent, caps, order params/status/submit,
+                            schedule, freshness, bar tracker, kill switch, audit log, Telegram
+state/                      position state (FLAT / LONG / UNKNOWN)
+scripts/                    read-only diagnostics, dry runs, and one guarded paper-order test
+tests/                      pytest suites (fakes, no network)
+backtesting_engine.py       daily backtest (needs updating to current order semantics)
+```
 
-## 🛠️ Technologies Used
+Details for contributors and AI assistants: `PROJECT_CONTEXT.md` (architecture and interfaces), `CURRENT_STATE.md` (status, tests, known issues, next task), `DECISIONS.md` (rationale).
 
-* **Language:** Python 3.12+
-* **Data Science:** Pandas, NumPy, Polars (High-speed ingestion).
-* **Technical Analysis:** `pandas-ta` (Bollinger Bands, SMA, ATR).
-* **Brokerage:** Alpaca Markets API (`alpaca-py`).
-* **Communication:** Telegram Bot API (Alerting/Heartbeat).
+## Getting started
 
----
+Requirements: Python 3.13, an [Alpaca](https://alpaca.markets/) **paper** account, and optionally a Telegram bot for alerts.
 
-## 🚀 Getting Started
-
-### Prerequisites
-
-* An [Alpaca Markets](https://alpaca.markets/) account (Paper Trading API keys).
-* A([https://t.me/botfather](https://t.me/botfather)) token and Chat ID.
-
-### Installation
-
-1. **Clone the Repository:**
-```bash
+```powershell
 git clone https://github.com/Ian-RK/trading_bot.git
 cd trading_bot
-
-```
-
-
-2. **Set up Virtual Environment:**
-```bash
 python -m venv trading_bot_env
-source trading_bot_env/bin/activate  # Windows:.\trading_bot_env\Scripts\activate
-pip install -r requirements.txt
-
+.\trading_bot_env\Scripts\Activate.ps1
+python -m pip install -r requirements.txt
 ```
 
+Copy `.env.example` to `.env` and fill in your **paper** keys. Never commit `.env`.
 
-3. **Configure Environment Variables:**
-Create a `.env` file in the root directory:
 ```env
-ALPACA_API_KEY=your_key_here
-ALPACA_SECRET_KEY=your_secret_here
+ALPACA_API_KEY=your_paper_key
+ALPACA_SECRET_KEY=your_paper_secret
 ALPACA_BASE_URL=https://paper-api.alpaca.markets
 TELEGRAM_TOKEN=your_bot_token
 TELEGRAM_CHAT_ID=your_chat_id
-
+TRADING_ENABLED=false
 ```
 
+`TRADING_ENABLED` is the second of two order-submission switches. Leave it `false`.
 
+Historical data lives in `data/` (git-ignored); the downloader in `utils/data_downloader.py` fetches daily bars.
 
----
+## Usage
 
-## 📖 Usage
-
-### Running a Backtest
-
-To simulate the strategy on historical data stored in the `/data` folder:
-
-```bash
-python backtesting_engine.py
-
+```powershell
+python -m pytest tests -q                 # unit tests
+python main.py                            # paper loop, market hours only, submits nothing
+python -m scripts.diagnose_account        # read-only account fields
+python -m scripts.dry_run_intent          # print intent decisions from live paper data
+python backtesting_engine.py              # daily backtest (results not validated)
 ```
 
-### Starting the Live Loop (Paper Mode)
+Halt trading without stopping the bot: `New-Item KILL_SWITCH -ItemType File`. Resume: `Remove-Item KILL_SWITCH`.
 
-To run the bot 24/7 in simulation mode with live data:
+## Known limitations
 
-```bash
-python main.py
+Strategy look-ahead and a daily-versus-minute data mismatch (see `CURRENT_STATE.md`); live order submission not connected; no restart recovery, daily loss limit or stop-loss yet; some legacy scripts in `tests/` still call the Alpaca API when imported.
 
-```
+## Roadmap
 
----
+Wire submission behind both switches, make the strategy causal and re-validate it, add risk controls and restart protection, run a multi-week paper forward-test, then consider AI sentiment in shadow mode and a Raspberry Pi deployment. Live trading would be a separate, gated release.
 
-## 🛡️ Risk Management & Safety
+## Disclaimer
 
-The bot operates with multiple safety layers:
+This software is for educational purposes only. Trading involves substantial risk of loss. The authors assume no responsibility for results. Use paper trading only.
 
-1. **Data Sanity:** If incoming market data is >60s old, all trading is vetoed.
-2. **PDT Guard:** Refuses new entries if the account has  day trades in a rolling 5-day window.
-3. **Circuit Breaker:** Automatically liquidates positions and halts if the portfolio drops >3% in a single day.
-4. **Graceful Shutdown:** Handles `SIGINT` (Ctrl+C) by notifying the user and closing logging threads before exiting.
+## Contact
 
----
-
-## ⚖️ Legal Disclaimer
-
-**This software is for educational purposes only.** Trading financial instruments involves substantial risk of loss. The authors and contributors assume no responsibility for your trading results. **Always start in a Paper Trading (Sandbox) environment.**.
-
----
-
-## 🤝 Contributing
-
-Contributions are welcome! Please open an issue or submit a pull request for any logic improvements or edge-case protections.
-
----
-
-## 👨‍💻 Contact Info
-
-**Ian-RK** - [GitHub](https://www.google.com/search?q=https://github.com/Ian-RK)
+Ian-RK on [GitHub](https://github.com/Ian-RK)
