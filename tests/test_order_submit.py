@@ -267,3 +267,52 @@ def test_result_shape():
     result, _, _ = run()
     assert set(result) == {"outcome", "reason", "symbol", "client_order_id", "order_id",
                            "side", "qty", "limit_price", "state", "filled_qty"}
+
+# ---------- clean rejection vs unknown ----------
+class HttpError(Exception):
+    def __init__(self, status_code, message="err"):
+        super().__init__(message)
+        self.status_code = status_code
+
+
+@pytest.mark.parametrize("status", [400, 403, 422])
+def test_clean_4xx_refusal_with_404_lookup_is_rejected_no_latch(monkeypatch, status):
+    go_live(monkeypatch)
+    client = FakeClient(submit_error=HttpError(status), lookup_error=HttpError(404))
+    result, client, _ = run(client=client)
+    assert result["outcome"] == "REJECTED" and "refused" in result["reason"]
+    assert result["state"] is None and result["filled_qty"] is None
+    assert len(client.submitted) == 1               # never retried
+    assert sub.unresolved_submission() is None
+
+def test_rejected_does_not_block_next_order(monkeypatch):
+    go_live(monkeypatch)
+    run(client=FakeClient(submit_error=HttpError(403), lookup_error=HttpError(404)))
+    result, client, _ = run(client=FakeClient(statuses=[("filled", "1")]))
+    assert result["outcome"] == "SUBMITTED" and len(client.submitted) == 1
+
+@pytest.mark.parametrize("submit_exc, lookup_exc", [
+    (HttpError(408), HttpError(404)),               # request timeout: may have been placed
+    (HttpError(500), HttpError(404)),               # server error: unknown
+    (HttpError(403), HttpError(500)),               # lookup failed for another reason
+    (HttpError(403), RuntimeError("down")),         # lookup failed, no status
+    (RuntimeError("timeout"), HttpError(404)),      # submit had no HTTP status
+    (HttpError("403"), HttpError(404)),             # status not an int
+    (HttpError(403), HttpError("404")),
+    (HttpError(True), HttpError(404)),              # bool is not a status
+])
+def test_anything_not_clearly_refused_is_unknown_and_latches(monkeypatch, submit_exc, lookup_exc):
+    go_live(monkeypatch)
+    client = FakeClient(submit_error=submit_exc, lookup_error=lookup_exc)
+    result, client, _ = run(client=client)
+    assert result["outcome"] == "SUBMIT_UNKNOWN"
+    assert len(client.submitted) == 1
+    assert sub.unresolved_submission() == CID
+
+def test_4xx_submit_but_order_exists_is_recovered(monkeypatch):
+    go_live(monkeypatch)
+    client = FakeClient(submit_error=HttpError(400, "client_order_id must be unique"),
+                        statuses=[("filled", "1")])
+    result, client, _ = run(client=client)
+    assert result["outcome"] == "RECOVERED" and result["state"] == "DONE_FILLED"
+    assert sub.unresolved_submission() is None

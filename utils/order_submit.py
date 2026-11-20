@@ -48,6 +48,17 @@ def _oneline(e):
     return " ".join(str(e).split())[:200]
 
 
+def _http_status(error):
+    """HTTP status carried by an API error, or None if it has none."""
+    try:
+        status = getattr(error, "status_code", None)
+    except Exception:
+        return None
+    if isinstance(status, bool) or not isinstance(status, int):
+        return None
+    return status
+
+
 def _result(outcome, reason, symbol, **extra):
     result = {
         "outcome": outcome, "reason": reason, "symbol": symbol,
@@ -67,6 +78,8 @@ def place_order(intent, symbol, ref_price, bar_time, equity, current_qty,
       DRY_RUN        - everything checked out, but a switch is off; nothing sent
       SUBMITTED      - submit accepted; 'state' is the classified order state
       RECOVERED      - submit raised, but an order with this client ID exists
+      REJECTED       - broker refused (HTTP 4xx) and no order exists with this client ID;
+                       nothing was placed; no latch
       SUBMIT_UNKNOWN - submit raised and the lookup failed; latch engaged
     """
     global _unresolved_id
@@ -157,10 +170,21 @@ def place_order(intent, symbol, ref_price, bar_time, equity, current_qty,
         order = client.submit_order(order_data=request)
     except Exception as e:
         submit_error = _oneline(e)
+        submit_status = _http_status(e)
         # 9. Resolve by client order ID; never resubmit
         try:
             order = client.get_order_by_client_id(cid)
-        except Exception:
+        except Exception as lookup_exc:
+            clean_refusal = (
+                submit_status is not None
+                and 400 <= submit_status < 500
+                and submit_status != 408
+                and _http_status(lookup_exc) == 404
+            )
+            if clean_refusal:
+                return finish("REJECTED",
+                              f"broker refused the order ({submit_error}); no order "
+                              "exists with this client ID; nothing placed", **details)
             _unresolved_id = cid
             return finish("SUBMIT_UNKNOWN",
                           f"submit failed ({submit_error}); lookup by client ID also "
