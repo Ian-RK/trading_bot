@@ -1,5 +1,5 @@
 """
-Filename: data_downloader.py
+Filename: backtesting_engine.py
 Author:   Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
 Created:  12-23-2025
 Description: This script implements a "Market Realism" layer. 
@@ -44,24 +44,26 @@ def run_backtest(df):
             equity_curve.append(equity_curve[-1] if equity_curve else INITIAL_CAPITAL)
             continue
             
-        # 2. TRADE EXECUTION LOGIC
-        # if is not  in a WAIT state do something
-        if weight!= 0:
-            # Calculate Target Position in Dollars
-            # 1.0 (Buy Lot) -> 100% of Total Equity
-            # 0.5 (Buy Little) -> 50% of Total Equity
-            # -1.0 (Sell Lot) -> 0% (Liquidate)
-            # -0.5 (Sell Little) -> 50% (Reduce)
-            current_total_value = cash + (shares * open_price)
-            target_pct = weight if weight > 0 else (1.0 + weight)
-            target_value = current_total_value * target_pct
-            
-            # Apply Slippage: Buy slightly higher, Sell slightly lower [3]
-            execution_price = open_price * (1 + SLIPPAGE_PCT) if weight > 0 else open_price * (1 - SLIPPAGE_PCT)
-            
-            # Calculate difference between current holdings and target
-            diff_dollars = target_value - (shares * execution_price)
-            shares_to_trade = int(diff_dollars / execution_price)
+        # 2. TRADE EXECUTION LOGIC (long-only, same semantics as utils/order_intent.py)
+        #   +w : BUY up to equity * w. Never sells.
+        #   -w : SELL down to equity * (1 + w). Never buys, never shorts.
+        #    0 : no instruction.
+        if weight != 0:
+            total_value = cash + (shares * open_price)
+            shares_to_trade = 0
+
+            if weight > 0:
+                execution_price = open_price * (1 + SLIPPAGE_PCT)
+                diff_dollars = (total_value * weight) - (shares * execution_price)
+                if diff_dollars > 0:
+                    wanted = int(diff_dollars / execution_price)
+                    affordable = int(max(cash, 0) / (execution_price + COMMISSION_PER_SHARE))
+                    shares_to_trade = min(wanted, affordable)
+            else:
+                execution_price = open_price * (1 - SLIPPAGE_PCT)
+                excess_dollars = (shares * execution_price) - (total_value * (1.0 + weight))
+                if excess_dollars > 0:
+                    shares_to_trade = -min(int(excess_dollars / execution_price), shares)
             
             if shares_to_trade!= 0:
                 cost = shares_to_trade * execution_price
