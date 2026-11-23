@@ -1,5 +1,5 @@
 """
-Filename: data_downloader.py
+Filename: price_action_strategy.py
 Author:   Ian Rodrigues Kmiliauskis (iankmiliauskis1604@gmail.com)
 Created:  12-23-2025
 Description: This script uses a "rolling window" approach. 
@@ -71,11 +71,11 @@ def calculate_signals(df):
     # --- SIGNAL LOGIC WITH VETO ---
     df['signal_weight'] = 0.0
     
-    # Filter 1: Price > SMA 200 
-	# (Ensures we are in a long-term bull market) 
-    # Filter 2: Price <= BB_Lower 
-	# (Ensures we are buying a deep "value" dip) 
-    buy_condition = (df['close'] > df['sma_200']) & (df['close'] <= df['bb_lower'])
+    # Filter 1: Price > SMA 200 (long-term uptrend)
+    # Filter 2: a close at or below BB_Lower within the last 10 bars (recent dip).
+    #   The window includes the current bar and only past bars, so it is causal.
+    dip_recent = (df['close'] <= df['bb_lower']).astype(int).rolling(10, min_periods=1).max() > 0
+    buy_condition = (df['close'] > df['sma_200']) & dip_recent
     
     # Apply Veto: Only buy LH/LL if filters are met
     df.loc[buy_condition & (df['state'] == "LH"), 'signal_weight'] = 1.0
