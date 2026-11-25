@@ -3,14 +3,16 @@ from datetime import datetime, timezone
 import pytest
 
 from utils.ai_budget import RequestBudget, ScoreCache
-from utils.ai_client import (MODEL, PROMPT_VERSION, TIMEOUT_SECONDS, URL,
-                             get_daily_score)
+from utils.ai_client import get_daily_score
+from utils.ai_config import DEFAULT_CONFIG, cache_version
 
 NOW = datetime(2026, 11, 25, 15, 0, tzinfo=timezone.utc)
 DAY = "2026-11-25"
 OK = {"score": 0.1, "confidence": 0.5, "ok": True, "reason": ""}
 HEADS = [{"headline": "Fed holds rates steady"}]
 GOOD = '{"score": -0.3, "confidence": 0.6}'
+CFG = DEFAULT_CONFIG
+VER = cache_version(CFG, "SPY")
 
 
 class _Resp:
@@ -46,7 +48,7 @@ def _setup(tmp_path, limit=5):
 
 def test_cache_hit_makes_no_call_and_uses_no_budget(tmp_path):
     budget, cache = _setup(tmp_path)
-    cache.put(MODEL, PROMPT_VERSION, DAY, OK)
+    cache.put(CFG.model, VER, DAY, OK)
     post = _Post(_Resp(200, _ok_body(GOOD)))
     r = get_daily_score(DAY, HEADS, NOW, budget, cache, post=post, api_key="k")
     assert r["score"] == 0.1 and r["source"] == "cache"
@@ -114,7 +116,7 @@ def test_bad_reply_is_neutral_and_not_cached(tmp_path):
     post = _Post(_Resp(200, _ok_body("I think the market will go up")))
     r = get_daily_score(DAY, HEADS, NOW, budget, cache, post=post, api_key="k")
     assert r["ok"] is False and r["score"] == 0.0
-    assert cache.get(MODEL, PROMPT_VERSION, DAY) is None
+    assert cache.get(CFG.model, VER, DAY) is None
 
 
 @pytest.mark.parametrize("resp", [
@@ -136,9 +138,9 @@ def test_request_shape(tmp_path):
     post = _Post(_Resp(200, _ok_body(GOOD)))
     get_daily_score(DAY, HEADS, NOW, budget, cache, post=post, api_key="test-key")
     url, headers, payload, timeout = post.calls[0]
-    assert url == URL and timeout == TIMEOUT_SECONDS
+    assert url == CFG.url and timeout == CFG.timeout_seconds
     assert headers["Authorization"] == "Bearer test-key"
-    assert payload["model"] == MODEL and payload["temperature"] == 0
+    assert payload["model"] == CFG.model and payload["temperature"] == 0
     assert payload["messages"][0]["role"] == "system"
     assert "Fed holds rates steady" in payload["messages"][1]["content"]
     assert "test-key" not in str(payload)
