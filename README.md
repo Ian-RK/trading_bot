@@ -9,7 +9,8 @@ An experimental Python trading bot built around a price-action strategy and a sa
 - The safety and execution plumbing is implemented and unit-tested (see below).
 - The bot loop runs in paper mode during market hours, evaluates the strategy and logs what it *would* do. It submits nothing.
 - A guarded order-submission function exists but is not connected to the bot. It has been tested only with a fake broker and in dry runs, and one forced 1-share paper round trip (buy, duplicate-ID rejection, sell) has been run successfully.
-- **The strategy is not validated.** The swing-detection step uses future bars, so earlier backtest figures were contaminated by look-ahead bias and have been **withdrawn**. The live path also cannot produce a signal on the newest bar until this is fixed. No performance claim is made.
+- **The strategy is not validated.** Swing detection is now causal and the backtest uses long-only, next-open semantics. Earlier performance figures came from a look-ahead bug and a sell-from-flat bug and remain **withdrawn**. See the results below: the strategy has about 6 distinct entries, was tuned on the same files, and underperformed buy and hold wherever it traded.
+- **Shadow mode:** the bot also polls public news and logs AI sentiment scores each day after the close. This is advisory only and never affects orders.
 
 ## What is implemented
 
@@ -38,12 +39,73 @@ utils/                      broker, reconcilers, intent, caps, order params/stat
 state/                      position state (FLAT / LONG / UNKNOWN)
 scripts/                    read-only diagnostics, dry runs, and one guarded paper-order test
 tests/                      pytest suites (fakes, no network)
-backtesting_engine.py       daily backtest (needs updating to current order semantics)
+backtesting_engine.py       daily backtest (long-only, next-open execution)
 ```
 
-Details for contributors and AI assistants: `PROJECT_CONTEXT.md` (architecture and interfaces), `CURRENT_STATE.md` (status, tests, known issues, next task), `DECISIONS.md` (rationale).
+Project notes for contributors are kept outside the repository.
+
+## Status and limitations
+
+This is a paper-trading research project. **It does not place orders.**
+`main.py` fetches data, computes the daily signal and logs what it would do.
+Order submission exists as a tested module and was exercised once by a manual
+paper test (1 share bought and sold on the Alpaca paper account), but it is
+not connected to the bot loop.
+
+- Strategy: daily bars, decisions from completed bars only, executed at the
+  next open in backtests. Swing points are detected causally (a pivot counts
+  only once its confirming bars exist).
+- Earlier performance figures in this repository's history were withdrawn:
+  the old backtest engine could sell from a flat position and the old swing
+  detection used future bars. Both were fixed and tested.
+- The current strategy has only about 6 distinct entries across the five
+  sample files, and its entry rule was chosen on those same files. There is
+  no out-of-sample data. Treat the numbers below as a smoke test of the
+  pipeline, not as evidence that the strategy works.
+- Paper fills prove nothing about real execution quality.
+
+| Data file | Strategy | Buy and hold |
+|---|---|---|
+| SPY_NEUTRAL_2018 | 0.00% (0 trades) | -7.96% |
+| SPY_BEAR_2022 | 0.00% (0 trades) | -19.46% |
+| SPY_BULL_2025 | +0.87% (4 trades, max drawdown -3.71%) | +13.99% |
+| QQQ_TECH_2025 | -0.24% (1 trade, max drawdown -2.16%) | +19.60% |
+| SPY_historical | -0.22% (8 trades, max drawdown -3.81%) | +44.61% |
+
+Buy and hold = buy at the first next-day open with the same slippage and commission, no circuit breaker. The strategy cannot trade during its 200-day warm-up; buy and hold can.
+
+The strategy underperformed buy and hold on every file where it traded.
+
+## AI layer (advisory, shadow mode)
+
+An LLM (NVIDIA Nemotron via OpenRouter, free tier, 50 requests/day, 40 used
+at most) scores one day's public headlines from -1 (bearish) to +1 (bullish)
+with a confidence. **The AI never trades.** Any failure, invalid reply, missing
+key or exhausted budget gives a neutral score. Scores are cached by model,
+prompt version and day.
+
+- `utils/ai_strategy.py` maps scores to long-only weights: AI-only, or a
+  price signal with an AI *veto* (a confident bearish score cancels a buy; it
+  never creates a buy and never blocks a sell).
+- `utils/ai_compare.py` compares price-only, AI-only, combined and
+  buy-and-hold on the unchanged backtest engine. Tests check that scores for
+  day t+1 or later cannot change any weight or equity up to day t.
+- Shadow mode (`utils/shadow_log.py`, hooked into `main.py`) polls Alpaca
+  news every 5 minutes, stamps each headline with **our own first-seen time**,
+  and scores each weekday after the 16:00 ET cutoff using only headlines seen
+  by then. It writes a log and has no order path.
+
+Why no historical AI backtest: Alpaca's news history starts around May 2026,
+comes from a single source of small-company items with no SPY tags, and its
+timestamps are batch/ingestion times (nothing before 16:00 ET in the days we
+probed). A backtest on it would not be point-in-time. Model memory cannot be
+ruled out either. So the AI is evaluated only from the day shadow mode began
+recording (2026-11-25), and the early comparison shows the pipeline works, not
+that the AI adds value. With so few days, any result is statistically weak.
 
 ## Getting started
+
+Run these commands from the folder where you want the project created, not from inside an existing clone.
 
 Requirements: Python 3.13, an [Alpaca](https://alpaca.markets/) **paper** account, and optionally a Telegram bot for alerts.
 
@@ -84,11 +146,11 @@ Halt trading without stopping the bot: `New-Item KILL_SWITCH -ItemType File`. Re
 
 ## Known limitations
 
-Strategy look-ahead and a daily-versus-minute data mismatch (see `CURRENT_STATE.md`); live order submission not connected; no restart recovery, daily loss limit or stop-loss yet; some legacy scripts in `tests/` still call the Alpaca API when imported.
+Small, in-sample strategy evidence (see above); the AI layer has no historical evaluation and only a few days of shadow data; live order submission is not connected; no restart recovery, daily loss limit or stop-loss yet; a daily signal repeats every minute, so a once-per-day guard is needed before order wiring; some legacy scripts in `tests/` still call the Alpaca API when imported.
 
 ## Roadmap
 
-Wire submission behind both switches, make the strategy causal and re-validate it, add risk controls and restart protection, run a multi-week paper forward-test, then consider AI sentiment in shadow mode and a Raspberry Pi deployment. Live trading would be a separate, gated release.
+Collect several weeks of shadow-mode AI scores and compare strategies with `utils/ai_compare.py`; add a once-per-day guard, restart protection and risk controls; wire submission behind both switches; run a multi-week paper forward-test; consider a Raspberry Pi deployment. Live trading would be a separate, gated release.
 
 ## Disclaimer
 
