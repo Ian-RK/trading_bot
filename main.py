@@ -30,6 +30,7 @@ from utils.broker import verify_paper_account
 from utils.kill_switch import is_trading_halted
 from utils.audit_log import audit_event
 from strategies.price_action_strategy import engineer_features
+from utils.daily_bars import completed_daily_bars, history_age_days, is_history_fresh
 
 # SETTINGS
 SYMBOL = "SPY"
@@ -143,22 +144,19 @@ def run_trading_cycle():
         return
     _last_block_reason = None
 
-    # 3. DATA FUSION: Injecting the live bar into historical data
+    # 3. Daily history: completed bars only (never today's unfinished bar)
+    now_utc = pd.Timestamp.now(tz="UTC")
     hist_df = pd.read_csv(f"data/{SYMBOL}_historical.csv")
+    daily_df = completed_daily_bars(hist_df, now_utc)
+    if not is_history_fresh(daily_df, now_utc):
+        age = history_age_days(daily_df, now_utc)
+        print(f"SKIP: daily history is stale (newest completed bar is {age} days old).")
+        audit_event("cycle", outcome="SKIPPED_STALE_HISTORY", symbol=SYMBOL,
+                    bar_ts=bar_time, price=current_price, history_age_days=age)
+        return
 
-    live_row = pd.DataFrame([{
-        'timestamp': latest_bar.timestamp,
-        'open': latest_bar.open,
-        'high': latest_bar.high,
-        'low': latest_bar.low,
-        'close': latest_bar.close,
-        'volume': latest_bar.volume
-    }])
-
-    full_df = pd.concat([hist_df, live_row], ignore_index=True)
-
-    # 4. Generate Signal from the 'Fused' data
-    processed_df = engineer_features(full_df)
+    # 4. Generate Signal from completed daily bars only
+    processed_df = engineer_features(daily_df)
     latest_signal = processed_df['signal_weight'].iloc[-1]
 
     # 5. Kill switch, then Execution Agent
