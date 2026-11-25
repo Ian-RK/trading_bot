@@ -7,7 +7,7 @@ from dataclasses import dataclass
 class AIConfig:
     model: str = "nvidia/nemotron-3.5-super-vl:free"
     prompt_version: str = "v1"
-    url: str = "https://openrouter.ai/api/v1/chat/completions"   # from memory, unverified
+    url: str = "https://openrouter.ai/api/v1/chat/completions"  # verified 2026-11-25: live 200 + llms.txt    
     timeout_seconds: int = 30
     max_tokens: int = 512
     max_headline_chars: int = 200
