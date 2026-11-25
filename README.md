@@ -64,17 +64,17 @@ not connected to the bot loop.
   pipeline, not as evidence that the strategy works.
 - Paper fills prove nothing about real execution quality.
 
-| Data file | Strategy | Buy and hold |
-|---|---|---|
-| SPY_NEUTRAL_2018 | 0.00% (0 trades) | -7.96% |
-| SPY_BEAR_2022 | 0.00% (0 trades) | -19.46% |
-| SPY_BULL_2025 | +0.87% (4 trades, max drawdown -3.71%) | +13.99% |
-| QQQ_TECH_2025 | -0.24% (1 trade, max drawdown -2.16%) | +19.60% |
-| SPY_historical | -0.22% (8 trades, max drawdown -3.81%) | +44.61% |
+| Data file | Rows (evaluable) | Strategy return (trades) | Buy and hold, same window | Strategy max drawdown | Buy and hold max drawdown |
+|---|---|---|---|---|---|
+| SPY_NEUTRAL_2018 | 250 (51) | 0.00% (0) | -11.55% | 0.00% | -16.31% |
+| SPY_BEAR_2022 | 251 (52) | 0.00% (0) | +3.53% | 0.00% | -7.59% |
+| SPY_BULL_2025 | 250 (51) | +0.87% (4) | +4.46% | -3.71% | -5.01% |
+| QQQ_TECH_2025 | 243 (44) | -0.24% (1) | +0.77% | -2.16% | -7.73% |
+| SPY_historical | 503 (304) | -0.22% (8) | +16.46% | -3.81% | -18.95% |
 
-Buy and hold = buy at the first next-day open with the same slippage and commission, no circuit breaker. The strategy cannot trade during its 200-day warm-up; buy and hold can.
+"Evaluable" counts rows from the first one where the 200-day average exists; the strategy cannot trade before that. Buy and hold is measured over the same window: buy at the next open with the same slippage and commission, no circuit breaker. The strategy was mostly in cash, so its smaller drawdowns reflect low exposure, not demonstrated skill. The two zero-trade files cover about 50 days each and say almost nothing. On the three files where it traded, the strategy returned less than buy and hold and had a worse return-to-drawdown ratio. Full-file figures are in `results/baseline_2026-11-25.txt`.
 
-The strategy underperformed buy and hold on every file where it traded.
+Over the same window the strategy returned less than buy and hold on all three files where it traded.
 
 ## AI layer (advisory, shadow mode)
 
