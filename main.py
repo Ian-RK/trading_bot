@@ -31,6 +31,7 @@ from utils.kill_switch import is_trading_halted
 from utils.audit_log import audit_event
 from strategies.price_action_strategy import engineer_features
 from utils.daily_bars import completed_daily_bars, history_age_days, is_history_fresh
+from utils.daily_history import DailyHistoryCache, fetch_daily_history
 
 # SETTINGS
 SYMBOL = "SPY"
@@ -39,6 +40,7 @@ SYMBOL = "SPY"
 MAX_BAR_AGE_SECONDS = 180
 _stale_alerted = False         # alert de-duplication for stale data
 BUFFER_MINUTES = 3             # Safety lead/lag for market hours
+_daily_cache = DailyHistoryCache(lambda now: fetch_daily_history(data_client, SYMBOL, now))
 EXIT_WINDOW_MINUTES = 20       # Time after close to process final bars (15 delay + 5 margin)
 ET = ZoneInfo("America/New_York")
 IDLE_SLEEP_SECONDS = 60        # re-check interval when the market is not open
@@ -146,7 +148,14 @@ def run_trading_cycle():
 
     # 3. Daily history: completed bars only (never today's unfinished bar)
     now_utc = pd.Timestamp.now(tz="UTC")
-    hist_df = pd.read_csv(f"data/{SYMBOL}_historical.csv")
+    try:
+        hist_df = _daily_cache.get(now_utc)
+    except Exception as e:
+        detail = " ".join(str(e).split())[:200]
+        print(f"SKIP: daily history fetch failed ({detail})")
+        audit_event("cycle", outcome="SKIPPED_HISTORY_FETCH_FAILED", symbol=SYMBOL,
+                    bar_ts=bar_time, price=current_price, reason=detail)
+        return
     daily_df = completed_daily_bars(hist_df, now_utc)
     if not is_history_fresh(daily_df, now_utc):
         age = history_age_days(daily_df, now_utc)
