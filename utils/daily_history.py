@@ -24,3 +24,18 @@ def fetch_daily_history(client, symbol, now, lookback_days=LOOKBACK_DAYS):
         raise ValueError(f"no daily bars returned for {symbol}")
     df = df.reset_index()
     return df[["timestamp", "open", "high", "low", "close", "volume"]]
+
+class DailyHistoryCache:
+    """Fetch once per Eastern-time day. A failed fetch is never cached."""
+
+    def __init__(self, fetch):
+        self._fetch = fetch          # callable(now) -> DataFrame
+        self._day = None
+        self._df = None
+
+    def get(self, now):
+        day = pd.Timestamp(now).tz_convert("America/New_York").strftime("%Y-%m-%d")
+        if day != self._day:
+            df = self._fetch(now)    # may raise; state is unchanged if it does
+            self._df, self._day = df, day
+        return self._df
