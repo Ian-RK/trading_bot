@@ -1,0 +1,20 @@
+commit: d32fc041120149a329a7b9af8ff36203c36cc972
+Data file hashes: see results/baseline_2026-11-25.txt (same files).
+--- script ---
+import warnings; warnings.filterwarnings("ignore")
+import backtesting_engine as eng
+from strategies.price_action_strategy import engineer_features
+from utils.ai_compare import compare, buy_and_hold, metrics
+for n in ["SPY_NEUTRAL_2018","SPY_BEAR_2022","SPY_BULL_2025","QQQ_TECH_2025","SPY_historical"]:
+    df = engineer_features(f"data/{n}.csv").reset_index(drop=True)
+    first = int(df["sma_200"].first_valid_index())
+    p = compare(df, {})["table"].loc["price_only"]
+    bh = metrics(buy_and_hold(df.iloc[first:].reset_index(drop=True), eng.INITIAL_CAPITAL,
+                              eng.COMMISSION_PER_SHARE, eng.SLIPPAGE_PCT), eng.INITIAL_CAPITAL)
+    print(n, f"rows={len(df)} first_signal_row={first} evaluable={len(df)-first} | strategy {p.total_return_pct:.2f}% trades={int(p.trades)} maxDD={p.max_drawdown_pct:.2f}% | buy&hold same window {bh['total_return_pct']:.2f}% maxDD={bh['max_drawdown_pct']:.2f}%")
+--- output ---
+SPY_NEUTRAL_2018 rows=250 first_signal_row=199 evaluable=51 | strategy 0.00% trades=0 maxDD=0.00% | buy&hold same window -11.55% maxDD=-16.31%
+SPY_BEAR_2022 rows=251 first_signal_row=199 evaluable=52 | strategy 0.00% trades=0 maxDD=0.00% | buy&hold same window 3.53% maxDD=-7.59%
+SPY_BULL_2025 rows=250 first_signal_row=199 evaluable=51 | strategy 0.87% trades=4 maxDD=-3.71% | buy&hold same window 4.46% maxDD=-5.01%
+QQQ_TECH_2025 rows=243 first_signal_row=199 evaluable=44 | strategy -0.24% trades=1 maxDD=-2.16% | buy&hold same window 0.77% maxDD=-7.73%
+SPY_historical rows=503 first_signal_row=199 evaluable=304 | strategy -0.22% trades=8 maxDD=-3.81% | buy&hold same window 16.46% maxDD=-18.95%
