@@ -22,7 +22,7 @@ from utils.market_schedule import classify_market_time
 
 from utils.tele_monitor import send_telegram_message
 from utils.risk_management import is_account_tradable, trading_client
-from utils.data_downloader import client as data_client
+from utils.data_downloader import client as data_client, API_KEY, SECRET_KEY
 from utils.execution_agent import execute_weighted_trade
 from utils.data_freshness import check_bar_freshness
 from utils.bar_tracker import BarTracker
@@ -32,6 +32,9 @@ from utils.audit_log import audit_event
 from strategies.price_action_strategy import engineer_features
 from utils.daily_bars import completed_daily_bars, history_age_days, is_history_fresh
 from utils.daily_history import DailyHistoryCache, fetch_daily_history
+from alpaca.data.historical.news import NewsClient
+from utils.shadow_log import ShadowLog
+from utils.shadow_runner import fetch_news_items, make_scorer, shadow_tick
 
 # SETTINGS
 SYMBOL = "SPY"
@@ -49,6 +52,9 @@ MAX_CONSECUTIVE_FAILURES = 5   # stop the bot after this many failed cycles in a
 _last_block_reason = None      # alert de-duplication for "account not tradable"
 _bar_tracker = BarTracker()    # last fully processed bar (in memory)
 _halt_alerted = False          # alert de-duplication for suppressed signals
+_shadow = ShadowLog("logs/shadow_news.jsonl")              # log-only AI shadow mode
+_news_client = NewsClient(API_KEY, SECRET_KEY)
+_shadow_score = make_scorer("logs/ai_budget.json", "logs/ai_cache.json")
 
 # --- MANUAL SHUTDOWN HANDLER ---
 def manual_shutdown(sig, frame):
@@ -212,6 +218,8 @@ def main_loop():
     last_state = None
     consecutive_failures = 0
     while True:
+        shadow_tick(_shadow, datetime.now(timezone.utc),
+            lambda: fetch_news_items(_news_client), _shadow_score, audit_event)
         result = get_market_state()
         state = result["state"]
 
