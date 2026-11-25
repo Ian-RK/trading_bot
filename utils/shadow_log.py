@@ -143,7 +143,11 @@ class ShadowLog:
             if created is not None and seen - created > MAX_AGE_AT_FIRST_SEEN:
                 continue
             cands.append({"id": rec["id"], "headline": rec["headline"],
-                          "first_seen_at": seen})
+                          "first_seen_at": seen,
+                          "_order": created if created is not None else seen})
+        # Items from one poll share a first_seen_at. Break ties by Alpaca's own
+        # created_at (ordering only, never a time gate) so the NEWEST are kept.
+        cands.sort(key=lambda c: (c["first_seen_at"], c["_order"]))
         return headlines_available(cands, cutoff, MAX_ITEMS)
 
     def score_day(self, day, now, score):

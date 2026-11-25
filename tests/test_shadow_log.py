@@ -191,3 +191,13 @@ def test_scored_day_survives_restart(tmp_path):
     calls = []
     out = ShadowLog(p).step(t(18, 22), lambda: [], lambda d, h: calls.append(d) or {})
     assert out["scored_day"] is None and calls == []
+
+
+def test_same_poll_batch_keeps_newest_30_by_created(tmp_path):
+    log = ShadowLog(str(tmp_path / "s.jsonl"))
+    now = t(18, 15)
+    batch = [raw(i, created=(now - timedelta(minutes=i)).isoformat())
+             for i in range(1, 36)]            # API order: id 1 newest, id 35 oldest
+    log.record_new(batch, now)
+    got = ids(log.select_for_day(date(2026, 11, 18)))
+    assert got == [str(i) for i in range(30, 0, -1)]   # ids 31-35 (oldest) dropped
